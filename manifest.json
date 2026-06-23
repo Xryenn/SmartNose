@@ -1,0 +1,17 @@
+{
+  "name": "Smart Nose TPA v2",
+  "short_name": "SmartNose",
+  "description": "Monitoring CH4, H2S, Suhu, Kelembapan & GPS real-time di TPA",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌬️</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

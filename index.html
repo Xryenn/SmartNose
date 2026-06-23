@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Smart Nose TPA - Real-time Gas Monitoring</title>
+<link rel="manifest" href="manifest.json">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#0f172a; --surface:#1e293b; --surface2:#263148; --surface3:#1a2540;
+  --border:rgba(255,255,255,0.08); --text:#f1f5f9; --text2:#94a3b8;
+  --green:#22c55e; --green-bg:rgba(34,197,94,0.12);
+  --orange:#f97316; --orange-bg:rgba(249,115,22,0.12);
+  --red:#ef4444; --red-bg:rgba(239,68,68,0.12);
+  --accent:#38bdf8; --purple:#a78bfa; --yellow:#fbbf24;
+}
+html, body { width:100%; height:100%; overflow-x:hidden; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+.container { width:100%; max-width:1200px; margin:0 auto; }
+
+/* RESPONSIVE */
+@media (max-width:640px) {
+  body { font-size:14px; padding-bottom:80px; }
+}
+@media (min-width:641px) {
+  .container { padding:0 20px; }
+  body { padding-bottom:0; }
+  nav { display:none; }
+}
+
+/* HEADER */
+header { background:var(--surface); border-bottom:1px solid var(--border); padding:14px 16px 10px; position:sticky; top:0; z-index:100; }
+@media (min-width:641px) { header { padding:14px 20px; display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid var(--surface3); } }
+.hrow1 { display:flex; justify-content:space-between; align-items:center; }
+@media (min-width:641px) { .hrow1 { flex:1; } }
+.logo { display:flex; align-items:center; gap:10px; }
+.logo-icon { width:40px; height:40px; background:linear-gradient(135deg,#0ea5e9,#38bdf8); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px; box-shadow:0 4px 15px rgba(14,165,233,0.3); }
+@media (min-width:641px) { .logo-icon { width:44px; height:44px; font-size:22px; } }
+.logo h1 { font-size:15px; font-weight:700; letter-spacing:-0.5px; }
+@media (min-width:641px) { .logo h1 { font-size:18px; } }
+.logo p { font-size:10px; color:var(--text2); }
+@media (min-width:641px) { .logo p { font-size:11px; } }
+.live-badge { display:flex; align-items:center; gap:5px; background:rgba(34,197,94,0.15); color:#22c55e; font-size:10px; font-weight:600; padding:3px 9px; border-radius:20px; border:1px solid rgba(34,197,94,0.3); }
+.live-dot { width:6px; height:6px; background:#22c55e; border-radius:50%; animation:pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+.hrow2 { display:flex; justify-content:space-between; align-items:center; margin-top:8px; gap:10px; }
+@media (min-width:641px) { .hrow2 { display:none; } }
+.last-update { font-size:10px; color:var(--text2); flex:1; }
+@media (min-width:641px) { .last-update { font-size:11px; margin-left:auto; order:3; } }
+.db-badge { font-size:10px; padding:4px 10px; border-radius:20px; border:1px solid; white-space:nowrap; font-weight:600; transition:all 0.3s ease; }
+@media (min-width:641px) { .db-badge { font-size:11px; padding:5px 12px; order:2; margin:0 15px; } }
+.db-online { color:var(--green); background:var(--green-bg); border-color:rgba(34,197,94,0.3); }
+.db-offline { color:var(--red); background:var(--red-bg); border-color:rgba(239,68,68,0.3); }
+.db-loading { color:var(--orange); background:var(--orange-bg); border-color:rgba(249,115,22,0.3); }
+.bell-btn { background:none; border:none; color:var(--text2); font-size:19px; cursor:pointer; position:relative; padding:6px; transition:all 0.3s ease; }
+@media (min-width:641px) { .bell-btn { font-size:20px; order:1; } }
+.bell-btn:hover { color:var(--accent); transform:scale(1.1); }
+.bell-count { position:absolute; top:-2px; right:-2px; background:var(--red); color:#fff; font-size:9px; font-weight:700; width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(239,68,68,0.4); animation:pulse 2s infinite; }
+
+/* ALERT BANNER */
+.alert-banner { margin:10px 14px 0; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:12px; padding:11px 13px; display:none; align-items:center; gap:10px; animation:slideIn 0.3s ease; }
+@media (min-width:641px) { .alert-banner { margin:15px 0 0; } }
+.alert-banner.show { display:flex; }
+.alert-banner .ico { font-size:20px; }
+.alert-text p:first-child { font-size:13px; font-weight:600; color:var(--red); }
+.alert-text p:last-child { font-size:11px; color:var(--text2); margin-top:2px; }
+
+/* LAYOUT */
+.content { padding:0 14px; }
+@media (min-width:641px) { .content { padding:0; } }
+.sec-title { font-size:11px; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:0.08em; margin:18px 0 9px; }
+@media (min-width:641px) { .sec-title { margin:24px 0 12px; } }
+
+/* SENSOR CARDS */
+.sensor-grid { display:grid; grid-template-columns:1fr; gap:10px; }
+@media (min-width:641px) { .sensor-grid { grid-template-columns:repeat(auto-fit,minmax(350px,1fr)); gap:15px; } }
+.sensor-card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:14px; position:relative; overflow:hidden; }
+.sensor-card::before { content:''; position:absolute; top:0; left:0; width:4px; height:100%; }
+.card-green::before { background:var(--green); }
+.card-orange::before { background:var(--orange); }
+.card-red::before { background:var(--red); }
+.card-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; }
+.s-name { font-size:13px; font-weight:600; }
+@media (min-width:641px) { .s-name { font-size:14px; } }
+.s-loc { font-size:10px; color:var(--text2); margin-top:2px; }
+.zone-badge { font-size:10px; font-weight:700; padding:3px 9px; border-radius:20px; text-transform:uppercase; }
+.bg-green { background:var(--green-bg); color:var(--green); }
+.bg-orange { background:var(--orange-bg); color:var(--orange); }
+.bg-red { background:var(--red-bg); color:var(--red); }
+
+/* GRID LAYOUTS */
+.readings-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-bottom:10px; }
+.readings-grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:7px; margin-bottom:10px; }
+@media (min-width:641px) {
+  .readings-grid { grid-template-columns:1fr 1fr 1fr 1fr; }
+  .readings-grid-3 { grid-template-columns:repeat(5,1fr); }
+}
+.reading-block { background:var(--surface2); border-radius:10px; padding:9px 7px; text-align:center; }
+.r-label { font-size:9px; color:var(--text2); margin-bottom:3px; }
+.r-value { font-size:17px; font-weight:700; line-height:1.1; }
+@media (min-width:641px) { .r-value { font-size:18px; } }
+.r-unit { font-size:9px; color:var(--text2); }
+.c-green { color:var(--green); } .c-orange { color:var(--orange); } .c-red { color:var(--red); } .c-accent { color:var(--accent); } .c-purple { color:var(--purple); } .c-yellow { color:var(--yellow); }
+
+/* GPS BLOCK */
+.gps-block { background:var(--surface2); border-radius:10px; padding:10px 12px; }
+.gps-row { display:flex; justify-content:space-between; align-items:center; }
+.gps-label { font-size:10px; color:var(--text2); }
+.gps-val { font-size:11px; font-weight:600; font-family:monospace; color:var(--accent); }
+.gps-status { display:inline-flex; align-items:center; gap:5px; font-size:10px; }
+.gps-dot { width:7px; height:7px; border-radius:50%; }
+.gps-maps-btn { display:block; margin-top:8px; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.25); color:var(--accent); font-size:11px; font-weight:600; text-align:center; padding:7px; border-radius:8px; text-decoration:none; cursor:pointer; }
+.gps-maps-btn:hover { background:rgba(56,189,248,0.2); }
+
+/* CARD FOOTER */
+.card-footer { display:flex; justify-content:space-between; align-items:center; padding-top:9px; border-top:1px solid var(--border); margin-top:2px; }
+.card-time { font-size:10px; color:var(--text2); }
+
+/* CHART CARD */
+.chart-card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:14px; margin-bottom:10px; }
+@media (min-width:641px) { .chart-card { padding:18px; } }
+.chart-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+.chart-title { font-size:13px; font-weight:600; }
+.chart-container { position:relative; height:240px; margin-bottom:10px; }
+@media (min-width:641px) { .chart-container { height:320px; } }
+.legend-row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:9px; }
+.leg-item { display:flex; align-items:center; gap:5px; font-size:10px; color:var(--text2); }
+.leg-dot { width:8px; height:8px; border-radius:2px; }
+
+/* STATS GRID */
+.stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
+@media (min-width:641px) { .stats-grid { grid-template-columns:repeat(4,1fr); } }
+.stat-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:13px; }
+.stat-icon { font-size:18px; margin-bottom:5px; }
+.stat-val { font-size:20px; font-weight:700; color:var(--accent); }
+@media (min-width:641px) { .stat-val { font-size:22px; } }
+.stat-label { font-size:10px; color:var(--text2); margin-top:2px; }
+
+/* MAP PAGE */
+.map-grid { display:grid; grid-template-columns:1fr; gap:15px; }
+@media (min-width:641px) { .map-grid { grid-template-columns:2fr 1fr; } }
+.map-card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:14px; }
+.map-embed { width:100%; height:260px; border-radius:12px; border:none; }
+@media (min-width:641px) { .map-embed { height:400px; } }
+.coord-list { display:flex; flex-direction:column; gap:8px; margin-top:12px; }
+.coord-item { background:var(--surface2); border-radius:10px; padding:11px 13px; display:flex; justify-content:space-between; align-items:center; }
+.coord-left { display:flex; align-items:center; gap:9px; }
+.coord-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.coord-name { font-size:12px; font-weight:600; }
+.coord-loc { font-size:10px; color:var(--text2); margin-top:1px; }
+.coord-right { text-align:right; }
+.coord-val { font-size:10px; font-family:monospace; color:var(--accent); }
+.coord-zone { font-size:9px; font-weight:700; margin-top:2px; }
+
+/* LOG */
+.log-card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:14px; margin-bottom:10px; }
+.log-item { display:flex; gap:10px; padding:9px 0; border-bottom:1px solid var(--border); }
+.log-item:last-child { border-bottom:none; }
+.log-dot { width:7px; height:7px; border-radius:50%; margin-top:4px; flex-shrink:0; }
+.log-msg { font-size:12px; color:var(--text); }
+.log-time { font-size:10px; color:var(--text2); margin-top:2px; }
+
+/* SETTINGS */
+.settings-sec { background:var(--surface); border:1px solid var(--border); border-radius:16px; overflow:hidden; margin-bottom:10px; }
+.settings-item { display:flex; align-items:center; justify-content:space-between; padding:13px 15px; border-bottom:1px solid var(--border); font-size:13px; }
+.settings-item:last-child { border-bottom:none; }
+.s-label { color:var(--text2); font-size:10px; }
+.toggle { width:40px; height:22px; background:var(--green); border-radius:11px; position:relative; cursor:pointer; border:none; }
+.toggle::after { content:''; position:absolute; top:2px; left:17px; width:18px; height:18px; background:#fff; border-radius:50%; transition:left 0.2s; }
+.toggle.off { background:var(--surface2); }
+.toggle.off::after { left:2px; }
+.sb-config { background:var(--surface); border:1px solid rgba(56,189,248,0.3); border-radius:16px; padding:15px; margin-bottom:10px; }
+.sb-config h3 { font-size:13px; font-weight:600; color:var(--accent); margin-bottom:11px; }
+.cfg-input { width:100%; background:var(--surface2); border:1px solid var(--border); color:var(--text); font-size:11px; padding:9px 11px; border-radius:9px; margin-bottom:7px; font-family:monospace; }
+.cfg-input::placeholder { color:var(--text2); }
+.cfg-input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px rgba(56,189,248,0.1); }
+.btn-save { width:100%; background:var(--accent); color:var(--bg); border:none; border-radius:9px; padding:11px; font-size:13px; font-weight:600; cursor:pointer; transition:all 0.3s; }
+.btn-save:hover { background:#06b6d4; }
+.btn-save:active { transform:scale(0.98); }
+#cfgStatus { font-size:11px; margin-top:8px; padding:8px; border-radius:8px; text-align:center; }
+.status-success { background:rgba(34,197,94,0.15); color:var(--green); }
+.status-error { background:rgba(239,68,68,0.15); color:var(--red); }
+.profile-head { display:flex; flex-direction:column; align-items:center; padding:18px 14px; text-align:center; }
+.avatar { width:68px; height:68px; border-radius:50%; background:linear-gradient(135deg,#0ea5e9,#8b5cf6); display:flex; align-items:center; justify-content:center; font-size:26px; margin-bottom:11px; }
+input[type=range] { -webkit-appearance:none; height:4px; background:var(--surface2); border-radius:2px; outline:none; width:75px; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:15px; height:15px; background:var(--accent); border-radius:50%; cursor:pointer; }
+.thr-row { display:flex; align-items:center; gap:7px; }
+.thr-val { font-size:12px; font-weight:600; color:var(--accent); min-width:60px; text-align:right; }
+
+/* NAV - Mobile */
+@media (max-width:640px) {
+  .page { display:block; }
+  .page.active { display:block; }
+}
+
+
+::-webkit-scrollbar { width:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--surface2); border-radius:3px; }
+::-webkit-scrollbar-thumb:hover { background:var(--surface3); }
+
+@keyframes slideIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+.hidden { display:none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hrow1">
+    <div class="logo">
+      <div class="logo-icon">🌬️</div>
+      <div>
+        <h1>Smart Nose TPA</h1>
+        <p>Real-time Gas Monitoring</p>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:7px;">
+      <div class="live-badge"><span class="live-dot"></span> LIVE</div>
+      <button class="bell-btn" onclick="toggleAlert()">🔔<span class="bell-count" id="bellCount" style="display:none">0</span></button>
+    </div>
+  </div>
+  <div class="hrow2">
+    <span class="last-update" id="lastUpdate">--:--:--</span>
+    <span class="db-badge db-loading" id="dbBadge">⏳ Menghubungkan...</span>
+  </div>
+</header>
+
+<div id="alertBanner" class="alert-banner">
+  <div class="ico">⚠️</div>
+  <div class="alert-text">
+    <p id="alertMsg">Zona Merah Terdeteksi!</p>
+    <p id="alertDesc">Ada lokasi dengan konsentrasi gas berbahaya</p>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ═════════════════════════════════════════ DASHBOARD ═════════════════════════════════════════ -->
+<div id="page-dashboard" class="page active" style="padding-bottom:20px; display:block;">
+  <div class="content">
+    <div class="sec-title">📡 Status Sensor Real-time</div>
+    <div class="sensor-grid" id="sensorCards"></div>
+
+    <div class="sec-title">📊 Statistik</div>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon">💨</div>
+        <div class="stat-val c-orange" id="statAvgCH4">-- ppm</div>
+        <div class="stat-label">Rata-rata CH₄</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🌡️</div>
+        <div class="stat-val c-accent" id="statAvgSuhu">-- °C</div>
+        <div class="stat-label">Rata-rata Suhu</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">💧</div>
+        <div class="stat-val c-purple" id="statAvgRH">-- %</div>
+        <div class="stat-label">Rata-rata RH</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🏃</div>
+        <div class="stat-val c-green" id="statUptime">-- m</div>
+        <div class="stat-label">Runtime</div>
+      </div>
+    </div>
+
+    <div class="sec-title">📈 Grafik CH₄ Real-time</div>
+    <div class="chart-card">
+      <div class="legend-row">
+        <div class="leg-item"><div class="leg-dot" style="background:#0ea5e9;"></div>Sensor 01</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#f97316;"></div>Sensor 02</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#ef4444;"></div>Sensor 03</div>
+      </div>
+      <div class="chart-container"><canvas id="ch4Chart"></canvas></div>
+    </div>
+
+    <div class="sec-title">🌡️ Grafik Suhu & Kelembapan</div>
+    <div class="chart-card">
+      <div class="legend-row">
+        <div class="leg-item"><div class="leg-dot" style="background:#f97316;"></div>Suhu</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#a78bfa;"></div>Kelembapan</div>
+      </div>
+      <div class="chart-container"><canvas id="dhtChart"></canvas></div>
+    </div>
+
+    <div class="sec-title">📋 Log Terbaru</div>
+    <div class="log-card" id="logContainer"><div style="text-align:center;padding:18px;color:var(--text2);font-size:12px">Memuat data...</div></div>
+  </div>
+</div>
+
+<!-- ═════════════════════════════════════════ MAP ═════════════════════════════════════════ -->
+<div id="page-map" class="page active" style="padding-bottom:20px; display:block;">
+  <div class="content">
+    <div class="sec-title">🗺️ Peta Lokasi Sensor (GPS)</div>
+    <div class="map-grid">
+      <div class="map-card">
+        <iframe id="mapFrame" class="map-embed" src="https://maps.google.com/maps?q=-7.6298,111.5098&z=16&output=embed"></iframe>
+      </div>
+      <div>
+        <div class="sec-title">📍 Koordinat Sensor</div>
+        <div class="coord-list" id="coordList"></div>
+      </div>
+    </div>
+
+    <div class="sec-title">🛰️ Info GPS</div>
+    <div class="map-card" id="gpsInfoCard"></div>
+  </div>
+</div>
+
+<!-- ═════════════════════════════════════════ HISTORY ═════════════════════════════════════════ -->
+<div id="page-history" class="page active" style="padding-bottom:20px; display:block;">
+  <div class="content">
+    <div class="sec-title">📈 Riwayat CH₄ dari Database</div>
+    <div class="chart-card">
+      <div class="legend-row">
+        <div class="leg-item"><div class="leg-dot" style="background:#0ea5e9;"></div>Sensor 01</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#f97316;"></div>Sensor 02</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#ef4444;"></div>Sensor 03</div>
+      </div>
+      <div class="chart-container"><canvas id="histCH4"></canvas></div>
+    </div>
+
+    <div class="sec-title">🌡️ Riwayat Suhu & Kelembapan</div>
+    <div class="chart-card">
+      <div class="legend-row">
+        <div class="leg-item"><div class="leg-dot" style="background:#f97316;"></div>Suhu</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#a78bfa;"></div>Kelembapan</div>
+      </div>
+      <div class="chart-container"><canvas id="histDHT"></canvas></div>
+    </div>
+
+    <div class="sec-title">🚨 Alert Log</div>
+    <div class="log-card" id="alertLogContainer"><div style="text-align:center;padding:18px;color:var(--text2);font-size:12px">Memuat log...</div></div>
+  </div>
+</div>
+
+<!-- ═════════════════════════════════════════ SETTINGS ═════════════════════════════════════════ -->
+<div id="page-settings" class="page active" style="padding-bottom:20px; display:block;">
+  <div class="content">
+    <div class="profile-head">
+      <div class="avatar">🔧</div>
+      <h2 style="font-size:16px;font-weight:600;margin-bottom:4px;">Pengaturan Sistem</h2>
+      <p style="font-size:12px;color:var(--text2);">Konfigurasi monitoring TPA</p>
+    </div>
+
+    <div class="sec-title">🔌 Konfigurasi Supabase</div>
+    <div class="sb-config">
+      <h3>Koneksi Database</h3>
+      <input type="text" id="cfgUrl" class="cfg-input" placeholder="Supabase URL (https://...supabase.co)" value="">
+      <input type="password" id="cfgKey" class="cfg-input" placeholder="Anon Public Key" value="">
+      <button class="btn-save" onclick="saveConfig()">💾 Simpan Konfigurasi</button>
+      <div id="cfgStatus"></div>
+    </div>
+
+    <div class="sec-title">🔔 Notifikasi</div>
+    <div class="settings-sec">
+      <div class="settings-item">
+        <span>Push Notification</span>
+        <button class="toggle" id="notifToggle" onclick="toggleNotif(this)"></button>
+      </div>
+      <div class="settings-item">
+        <span>Sound Alert</span>
+        <button class="toggle" id="soundToggle" onclick="toggleSound(this)"></button>
+      </div>
+    </div>
+
+    <div class="sec-title">⚙️ Ambang Batas Alert</div>
+    <div class="settings-sec">
+      <div class="settings-item">
+        <div>
+          <div>🔴 CH₄ Merah (Critical)</div>
+          <div class="s-label">Zona berbahaya</div>
+        </div>
+        <div class="thr-row">
+          <input type="range" min="500" max="5000" value="1500" onchange="updateThreshold('ch4_red', this.value)">
+          <span class="thr-val" id="thr-ch4_red">1500 ppm</span>
+        </div>
+      </div>
+      <div class="settings-item">
+        <div>
+          <div>🟠 CH₄ Oranye (Warning)</div>
+          <div class="s-label">Zona waspada</div>
+        </div>
+        <div class="thr-row">
+          <input type="range" min="200" max="2000" value="800" onchange="updateThreshold('ch4_orange', this.value)">
+          <span class="thr-val" id="thr-ch4_orange">800 ppm</span>
+        </div>
+      </div>
+      <div class="settings-item">
+        <div>
+          <div>💨 H₂S Merah (Critical)</div>
+          <div class="s-label">Zona berbahaya</div>
+        </div>
+        <div class="thr-row">
+          <input type="range" min="5" max="100" value="50" onchange="updateThreshold('h2s_red', this.value)">
+          <span class="thr-val" id="thr-h2s_red">50 ppm</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-title">ℹ️ Info Sistem</div>
+    <div class="settings-sec">
+      <div class="settings-item">
+        <span>Status Koneksi</span>
+        <span id="dbInfoText" style="font-size:11px;font-weight:600;color:var(--text2)">--</span>
+      </div>
+      <div class="settings-item">
+        <span>Versi Aplikasi</span>
+        <span style="font-size:11px;font-weight:600;color:var(--text2)">v2.0.0</span>
+      </div>
+      <div class="settings-item">
+        <span>Last Update</span>
+        <span id="lastUpdateTime" style="font-size:11px;font-weight:600;color:var(--text2)">--:--:--</span>
+      </div>
+    </div>
+    <div style="padding:18px 0;text-align:center;font-size:10px;color:var(--text2)">Smart Nose TPA v2.0 · 2026 · Maospati, Magetan</div>
+  </div>
+</div>
+
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────
+//  CONFIG & STATE
+// ─────────────────────────────────────────────────────────────
+let SB_URL = localStorage.getItem('sb_url') || 'https://yhgmhmfrnpeoaihmvpvk.supabase.co';
+let SB_KEY = localStorage.getItem('sb_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InloZ21obWZybnBlb2FpaG12cHZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxNjE4MjEsImV4cCI6MjA5NzczNzgyMX0.sqCLGyH-gSDZ3jCjsDyBNcoGDLSjdt8RrPDKkIFLNHs';
+let isOnline = false;
+let sessionStart = Date.now();
+
+// Thresholds
+let THRESHOLDS = {
+  ch4_red: parseInt(localStorage.getItem('thr_ch4_red')) || 1500,
+  ch4_orange: parseInt(localStorage.getItem('thr_ch4_orange')) || 800,
+  h2s_red: parseInt(localStorage.getItem('thr_h2s_red')) || 50
+};
+
+// ─────────────────────────────────────────────────────────────
+//  SUPABASE CLIENT
+// ─────────────────────────────────────────────────────────────
+const { createClient } = supabase;
+let sbClient = null;
+
+function initSupabase() {
+  try {
+    sbClient = createClient(SB_URL, SB_KEY);
+    console.log('✅ Supabase initialized');
+  } catch(e) {
+    console.error('⚠️ Supabase init failed:', e);
+    sbClient = null;
+  }
+}
+
+async function sbQuery(table, filters = '') {
+  if (!sbClient) return null;
+  try {
+    let q = sbClient.from(table).select('*');
+    if (filters) q = q.filter(filters[0], filters[1], filters[2]);
+    const { data, error } = await q;
+    if (error) { setDB(false); return null; }
+    setDB(true);
+    return data;
+  } catch (e) {
+    setDB(false);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  FETCH DATA
+// ─────────────────────────────────────────────────────────────
+async function fetchLatest() {
+  const data = await sbQuery('sensor_readings', ['device_id', 'eq', 'TPA_01']);
+  if (!data || !data.length) { setDB(false); return; }
+  setDB(true);
+  
+  // Ambil record terbaru
+  const latest = data[data.length - 1];
+  updateSensorDisplay(latest);
+  renderAll();
+}
+
+function updateSensorDisplay(data) {
+  // Update global sensor state (bisa dikembangkan untuk multiple sensors)
+  window.latestData = data;
+}
+
+async function fetchLog() {
+  const data = await sbQuery('sensor_readings');
+  if (!data || !data.length) {
+    document.getElementById('logContainer').innerHTML = '<div style="text-align:center;padding:18px;color:var(--text2);font-size:12px">Belum ada data. Hubungkan ESP32.</div>';
+    return;
+  }
+  const latest5 = data.slice(-5).reverse();
+  document.getElementById('logContainer').innerHTML = latest5.map(r => {
+    const t = new Date(r.created_at).toLocaleTimeString('id-ID');
+    const status = r.alert_ch4 || r.alert_h2s ? '🔴' : '🟢';
+    return `
+      <div class="log-item">
+        <div class="log-dot" style="background:${r.alert_ch4 || r.alert_h2s ? 'var(--red)' : 'var(--green)'}"></div>
+        <div>
+          <div class="log-msg">${status} CH₄: ${r.ch4_ppm.toFixed(1)}ppm | H₂S: ${r.h2s_ppm.toFixed(1)}ppm | ${r.temperature.toFixed(1)}°C | ${r.humidity.toFixed(0)}%</div>
+          <div class="log-time">${t}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function fetchAlerts() {
+  const data = await sbQuery('alerts_log');
+  if (!data || !data.length) {
+    document.getElementById('alertLogContainer').innerHTML = '<div style="text-align:center;padding:18px;color:var(--text2);font-size:12px">Belum ada alert</div>';
+    return;
+  }
+  const latest8 = data.slice(-8).reverse();
+  document.getElementById('alertLogContainer').innerHTML = latest8.map(r => {
+    const t = new Date(r.created_at).toLocaleString('id-ID');
+    const col = r.severity === 'CRITICAL' ? 'var(--red)' : 'var(--orange)';
+    const ic = r.severity === 'CRITICAL' ? '🔴' : '🟠';
+    return `
+      <div class="log-item">
+        <div class="log-dot" style="background:${col}"></div>
+        <div>
+          <div class="log-msg">${ic} [${r.alert_type}] ${r.severity} - ${r.ppm_value.toFixed(1)} ppm</div>
+          <div class="log-time">${t}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function fetchHistory() {
+  const data = await sbQuery('sensor_readings');
+  if (!data || data.length < 5) return;
+  
+  const last20 = data.slice(-20);
+  const labels = [];
+  const ch4Data = [];
+  const tempData = [];
+  const rhData = [];
+  
+  last20.forEach(r => {
+    const t = new Date(r.created_at);
+    labels.push(t.getHours().toString().padStart(2, '0') + ':' + t.getMinutes().toString().padStart(2, '0'));
+    ch4Data.push(r.ch4_ppm);
+    tempData.push(r.temperature);
+    rhData.push(r.humidity);
+  });
+  
+  if (histCH4) {
+    histCH4.data.labels = labels;
+    histCH4.data.datasets[0].data = ch4Data;
+    histCH4.update();
+  }
+  
+  if (histDHT) {
+    histDHT.data.labels = labels;
+    histDHT.data.datasets[0].data = tempData;
+    histDHT.data.datasets[1].data = rhData;
+    histDHT.update();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  RENDER
+// ─────────────────────────────────────────────────────────────
+function renderAll() {
+  if (!window.latestData) return;
+  const d = window.latestData;
+  renderSensorCard(d);
+  updateStats(d);
+  updateChart(d);
+  updateAlert(d);
+  const now = new Date().toTimeString().slice(0, 8);
+  document.getElementById('lastUpdate').textContent = 'Update: ' + now;
+  document.getElementById('lastUpdateTime').textContent = now;
+}
+
+function renderSensorCard(d) {
+  const zone = d.alert_ch4 || d.alert_h2s ? 'merah' : d.ch4_ppm > THRESHOLDS.ch4_orange ? 'oranye' : 'hijau';
+  const zoneLabel = zone === 'merah' ? 'Berbahaya' : zone === 'oranye' ? 'Waspada' : 'Aman';
+  const zoneColor = zone === 'merah' ? 'card-red' : zone === 'oranye' ? 'card-orange' : 'card-green';
+  const bgColor = zone === 'merah' ? 'bg-red' : zone === 'oranye' ? 'bg-orange' : 'bg-green';
+  
+  const gpsStr = d.gps_valid ? `${d.latitude.toFixed(6)}, ${d.longitude.toFixed(6)}` : 'Searching...';
+  const mapsUrl = d.gps_valid ? `https://maps.google.com/maps?q=${d.latitude},${d.longitude}` : '#';
+  
+  document.getElementById('sensorCards').innerHTML = `
+    <div class="sensor-card ${zoneColor}">
+      <div class="card-top">
+        <div>
+          <div class="s-name">${d.device_id}</div>
+          <div class="s-loc">Lokasi Monitoring</div>
+        </div>
+        <div class="zone-badge ${bgColor}">${zoneLabel}</div>
+      </div>
+      
+      <div class="readings-grid">
+        <div class="reading-block">
+          <div class="r-label">CH₄</div>
+          <div class="r-value c-orange">${d.ch4_ppm.toFixed(1)}</div>
+          <div class="r-unit">ppm</div>
+        </div>
+        <div class="reading-block">
+          <div class="r-label">H₂S</div>
+          <div class="r-value c-red">${d.h2s_ppm.toFixed(2)}</div>
+          <div class="r-unit">ppm</div>
+        </div>
+        <div class="reading-block">
+          <div class="r-label">🌡️</div>
+          <div class="r-value c-accent">${d.temperature.toFixed(1)}</div>
+          <div class="r-unit">°C</div>
+        </div>
+        <div class="reading-block">
+          <div class="r-label">💧</div>
+          <div class="r-value c-purple">${d.humidity.toFixed(0)}</div>
+          <div class="r-unit">%</div>
+        </div>
+      </div>
+      
+      <div class="gps-block">
+        <div class="gps-row">
+          <div><div class="gps-label">🛰️ GPS</div></div>
+          <div class="gps-status">
+            <div class="gps-dot" style="background:${d.gps_valid ? 'var(--green)' : 'var(--red)'}"></div>
+            <span>${d.gps_valid ? 'FIX' : 'SEARCHING'}</span>
+          </div>
+        </div>
+        <div class="gps-val" style="margin-top:6px;">${gpsStr}</div>
+        <a href="${mapsUrl}" target="_blank" class="gps-maps-btn">📍 Lihat di Google Maps</a>
+      </div>
+      
+      <div class="card-footer">
+        <div class="card-time">WDGI: ${d.wdgi.toFixed(3)} [${d.wdgi_status}]</div>
+        <div class="card-time">${d.alert_ch4 ? '⚠️ CH₄' : d.alert_h2s ? '⚠️ H₂S' : '✅ Aman'}</div>
+      </div>
+    </div>
+  `;
+}
+
+function updateStats(d) {
+  document.getElementById('statAvgCH4').textContent = d.ch4_ppm.toFixed(1) + ' ppm';
+  document.getElementById('statAvgSuhu').textContent = d.temperature.toFixed(1) + '°C';
+  document.getElementById('statAvgRH').textContent = d.humidity.toFixed(0) + '%';
+  const secs = Math.floor((Date.now() - sessionStart) / 1000);
+  const mm = Math.floor(secs / 60);
+  document.getElementById('statUptime').textContent = mm + ' m';
+}
+
+function updateAlert(d) {
+  const banner = document.getElementById('alertBanner');
+  const bc = document.getElementById('bellCount');
+  if (d.alert_ch4 || d.alert_h2s) {
+    banner.classList.add('show');
+    const type = d.alert_ch4 ? 'CH₄' : 'H₂S';
+    document.getElementById('alertMsg').textContent = '⚠️ Alert ' + type;
+    document.getElementById('alertDesc').textContent = 'Konsentrasi gas ' + type + ' melebihi threshold';
+    bc.style.display = 'flex';
+    bc.textContent = '1';
+  } else {
+    banner.classList.remove('show');
+    bc.style.display = 'none';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  CHARTS
+// ─────────────────────────────────────────────────────────────
+let ch4Chart = null, dhtChart = null, histCH4 = null, histDHT = null;
+
+function initCharts() {
+  const baseOpts = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'var(--text2)', font: { size: 10 } } },
+      x: { grid: { display: false }, ticks: { color: 'var(--text2)', font: { size: 9 } } }
+    }
+  };
+
+  ch4Chart = new Chart(document.getElementById('ch4Chart'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'S1', data: [], borderColor: '#0ea5e9', tension: 0.4, pointRadius: 0, borderWidth: 2 },
+      { label: 'S2', data: [], borderColor: '#f97316', tension: 0.4, pointRadius: 0, borderWidth: 2 },
+      { label: 'S3', data: [], borderColor: '#ef4444', tension: 0.4, pointRadius: 0, borderWidth: 2 }
+    ] },
+    options: baseOpts
+  });
+
+  dhtChart = new Chart(document.getElementById('dhtChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'Suhu', data: [], borderColor: '#f97316', yAxisID: 'y', tension: 0.4, pointRadius: 0, borderWidth: 2 },
+      { label: 'RH', data: [], borderColor: '#a78bfa', yAxisID: 'y1', tension: 0.4, pointRadius: 0, borderWidth: 2 }
+    ] },
+    options: { ...baseOpts, scales: { y: { ...baseOpts.scales.y, title: { text: '°C' } }, y1: { position: 'right', beginAtZero: true, grid: { display: false }, ticks: { color: 'var(--text2)' } } } }
+  });
+
+  histCH4 = new Chart(document.getElementById('histCH4'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'CH₄', data: [], borderColor: '#0ea5e9', fill: true, backgroundColor: 'rgba(14,165,233,0.08)', tension: 0.4, pointRadius: 0, borderWidth: 1.5 }
+    ] },
+    options: baseOpts
+  });
+
+  histDHT = new Chart(document.getElementById('histDHT'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'Suhu', data: [], borderColor: '#f97316', yAxisID: 'y', fill: true, backgroundColor: 'rgba(249,115,22,0.08)', tension: 0.4, pointRadius: 0, borderWidth: 1.5 },
+      { label: 'RH', data: [], borderColor: '#a78bfa', yAxisID: 'y1', fill: true, backgroundColor: 'rgba(167,139,250,0.08)', tension: 0.4, pointRadius: 0, borderWidth: 1.5 }
+    ] },
+    options: { ...baseOpts, scales: { y: baseOpts.scales.y, y1: { position: 'right', beginAtZero: true, grid: { display: false } } } }
+  });
+}
+
+function updateChart(d) {
+  if (!ch4Chart || !dhtChart) return;
+  const lb = new Date().toTimeString().slice(0, 5);
+  ch4Chart.data.labels.push(lb);
+  ch4Chart.data.datasets[0].data.push(d.ch4_ppm);
+  if (ch4Chart.data.labels.length > 30) { ch4Chart.data.labels.shift(); ch4Chart.data.datasets.forEach(ds => ds.data.shift()); }
+  ch4Chart.update('none');
+
+  dhtChart.data.labels.push(lb);
+  dhtChart.data.datasets[0].data.push(d.temperature);
+  dhtChart.data.datasets[1].data.push(d.humidity);
+  if (dhtChart.data.labels.length > 30) { dhtChart.data.labels.shift(); dhtChart.data.datasets.forEach(ds => ds.data.shift()); }
+  dhtChart.update('none');
+}
+
+// ─────────────────────────────────────────────────────────────
+//  DATABASE STATUS
+// ─────────────────────────────────────────────────────────────
+function setDB(on) {
+  isOnline = on;
+  const el = document.getElementById('dbBadge');
+  const info = document.getElementById('dbInfoText');
+  el.className = 'db-badge ' + (on ? 'db-online' : 'db-offline');
+  el.textContent = on ? '✅ Supabase' : '❌ Offline';
+  if (info) info.textContent = on ? 'Supabase (Online)' : 'Supabase (Offline)';
+}
+
+// ─────────────────────────────────────────────────────────────
+//  CONFIG & SETTINGS
+// ─────────────────────────────────────────────────────────────
+function saveConfig() {
+  const url = document.getElementById('cfgUrl').value.trim();
+  const key = document.getElementById('cfgKey').value.trim();
+  if (!url || !key) {
+    showStatus('⚠️ Isi URL dan Key', false);
+    return;
+  }
+  SB_URL = url;
+  SB_KEY = key;
+  localStorage.setItem('sb_url', url);
+  localStorage.setItem('sb_key', key);
+  initSupabase();
+  showStatus('✅ Tersimpan! Menghubungkan...', true);
+  setTimeout(() => { document.getElementById('dbBadge').className = 'db-badge db-loading'; document.getElementById('dbBadge').textContent = '⏳ Menghubungkan...'; fetchLatest(); }, 1000);
+}
+
+function showStatus(msg, success) {
+  const el = document.getElementById('cfgStatus');
+  el.textContent = msg;
+  el.className = success ? 'status-success' : 'status-error';
+}
+
+function updateThreshold(key, val) {
+  THRESHOLDS[key] = parseInt(val);
+  localStorage.setItem('thr_' + key, val);
+  document.getElementById('thr-' + key).textContent = val + (key.includes('h2s') ? ' ppm' : ' ppm');
+}
+
+function toggleNotif(el) {
+  el.classList.toggle('off');
+  localStorage.setItem('notif', !el.classList.contains('off'));
+}
+
+function toggleSound(el) {
+  el.classList.toggle('off');
+  localStorage.setItem('sound', !el.classList.contains('off'));
+}
+
+function toggleAlert() {
+  document.getElementById('alertBanner').classList.toggle('show');
+}
+
+// ─────────────────────────────────────────────────────────────
+//  NAVIGATION
+// ─────────────────────────────────────────────────────────────
+function goPage(p) {
+  try {
+    console.log('📍 goPage called:', p);
+    
+    // Hide all pages
+    document.querySelectorAll('.page').forEach(x => x.classList.remove('active'));
+    
+    // Remove active from all nav items
+    document.querySelectorAll('.nav-item').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.nav-link').forEach(x => x.classList.remove('active'));
+    
+    // Show the requested page
+    const targetPage = document.getElementById('page-' + p);
+    if (targetPage) {
+      targetPage.classList.add('active');
+      console.log('✅ Page shown:', 'page-' + p);
+    } else {
+      console.error('❌ Page not found:', 'page-' + p);
+    }
+    
+    // Activate mobile nav
+    const mobileNav = document.getElementById('nav-' + p);
+    if (mobileNav) {
+      mobileNav.classList.add('active');
+      console.log('✅ Mobile nav activated:', 'nav-' + p);
+    }
+    
+    // Activate desktop nav
+    const desktopNav = document.querySelector('[data-page="' + p + '"]');
+    if (desktopNav) {
+      desktopNav.classList.add('active');
+      console.log('✅ Desktop nav activated');
+    }
+    
+    // Load page-specific data
+    if (p === 'map') updateMapEmbed();
+    if (p === 'history') { fetchHistory(); fetchAlerts(); }
+    
+  } catch(e) {
+    console.error('❌ goPage error:', e);
+  }
+}
+
+function updateMapEmbed() {
+  const url = window.latestData && window.latestData.gps_valid
+    ? `https://maps.google.com/maps?q=${window.latestData.latitude},${window.latestData.longitude}&z=17&output=embed`
+    : 'https://maps.google.com/maps?q=-7.6298,111.5098&z=16&output=embed';
+  document.getElementById('mapFrame').src = url;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  INITIALIZATION
+// ─────────────────────────────────────────────────────────────
+function init() {
+  try {
+    // Load config
+    const cfgUrl = document.getElementById('cfgUrl');
+    const cfgKey = document.getElementById('cfgKey');
+    if (cfgUrl) cfgUrl.value = SB_URL;
+    if (cfgKey) cfgKey.value = SB_KEY;
+    
+    // Load thresholds UI
+    const thr_ch4_red = document.getElementById('thr-ch4_red');
+    const thr_ch4_orange = document.getElementById('thr-ch4_orange');
+    const thr_h2s_red = document.getElementById('thr-h2s_red');
+    if (thr_ch4_red) thr_ch4_red.textContent = THRESHOLDS.ch4_red + ' ppm';
+    if (thr_ch4_orange) thr_ch4_orange.textContent = THRESHOLDS.ch4_orange + ' ppm';
+    if (thr_h2s_red) thr_h2s_red.textContent = THRESHOLDS.h2s_red + ' ppm';
+    
+    // Init charts
+    try { initCharts(); } catch(e) { console.error('⚠️ Charts:', e); }
+    try { initSupabase(); } catch(e) { console.error('⚠️ Supabase:', e); }
+    
+    // Load toggles
+    const notif = localStorage.getItem('notif') !== 'false';
+    const sound = localStorage.getItem('sound') !== 'false';
+    const notifToggle = document.getElementById('notifToggle');
+    const soundToggle = document.getElementById('soundToggle');
+    if (notifToggle && !notif) notifToggle.classList.add('off');
+    if (soundToggle && !sound) soundToggle.classList.add('off');
+    
+    // Fetch data
+    try {
+      fetchLatest();
+      setInterval(fetchLatest, 15000);
+      setInterval(fetchLog, 30000);
+    } catch(e) { console.error('⚠️ Fetch:', e); }
+  } catch(e) {
+    console.error('❌ Init error:', e);
+  }
+
+// Safe initialization with error handling
+window.addEventListener('DOMContentLoaded', function() {
+  console.log('🔄 Initializing Smart Nose...');
+  try {
+    init();
+    console.log('✅ Init successful');
+  } catch(e) {
+    console.error('❌ Init error:', e);
+  }
+});
+
+// Fallback if DOM already loaded
+if (document.readyState !== 'loading') {
+  console.log('🔄 DOM already loaded, initializing...');
+  try {
+    init();
+    console.log('✅ Init successful');
+  } catch(e) {
+    console.error('❌ Init error:', e);
+  }
+}
+}
+</script>
+
+</body>
+</html>
